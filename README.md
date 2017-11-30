@@ -67,7 +67,7 @@ client.subscribe("foo"){|message, reply, subject|
 }
 ```
 
-## Authentication (not yet implemented)
+## Authentication
 
 ```crystal
 require "nats"
@@ -120,7 +120,7 @@ client.connect options
     - [ ] Tests
 - [x] Reconnect after critical errors
     - [ ] Tests
-- [ ] User authentication
+- [x] User authentication
     - [ ] Tests
 - [ ] OpenSSL:
     - [ ] Connect with using certificates

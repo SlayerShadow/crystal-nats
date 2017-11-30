@@ -1,3 +1,5 @@
+require "./protocol/*"
+
 module NATS
 
 	module Protocol

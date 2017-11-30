@@ -9,7 +9,7 @@ module NATS
 		@parser : Protocol::Parser?
 		@options : OptionsHash?
 		@servers : ServerPoolArray = ServerPoolArray.new
-		@server_info : ServerInfoHash = ServerInfoHash.new
+		@server_info : ServerInfoHash?
 		@status : UInt8 = STATUSES[ :disconnected ]
 		@subscriptions : SubscriptionsHash = SubscriptionsHash.new
 		@uri : URI?
@@ -134,8 +134,11 @@ module NATS
 			inner_options[ :pedantic ] = opts[ :pedantic ]? || false
 
 			inner_options[ :randomize_servers ] = opts[ :randomize_servers ]?.nil? ? true : opts[ :randomize_servers ]
-			inner_options[ :reconnect_time_wait ] ||= RECONNECT_TIME_WAIT
-			inner_options[ :max_reconnect_attempts ] ||= MAX_RECONNECT_ATTEMPTS
+			inner_options[ :reconnect_time_wait ] = opts[ :reconnect_time_wait ]? || RECONNECT_TIME_WAIT
+			inner_options[ :max_reconnect_attempts ] = opts[ :max_reconnect_attempts ]? || MAX_RECONNECT_ATTEMPTS
+
+			inner_options[ :user ] = opts[ :user ] if opts[ :user ]?
+			inner_options[ :pass ] = opts[ :pass ] if opts[ :pass ]?
 
 			@options = inner_options
 		end
@@ -241,6 +244,11 @@ module NATS
 				:protocol => PROTOCOL
 			}
 			data[ :name ] = options[ :name ] if options[ :name ]?
+
+			if @server_info[ "auth_required" ]
+				data[ :user ] = options[ :user ]?
+				data[ :pass ] = options[ :pass ]?
+			end
 
 			connection.write "CONNECT #{ data.to_json }#{ CR_LF }#{ PING_COMMAND }"
 			command = connection.read_command
