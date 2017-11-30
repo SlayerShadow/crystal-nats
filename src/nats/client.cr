@@ -5,6 +5,7 @@ require "./client/*"
 module NATS
 
 	class Client
+		@connection : Connection?
 		@parser : Protocol::Parser?
 		@options : OptionsHash?
 		@servers : ServerPoolArray = ServerPoolArray.new
@@ -13,6 +14,10 @@ module NATS
 		@subscriptions : SubscriptionsHash = SubscriptionsHash.new
 		@uri : URI?
 
+		@signal_channel : Channel( SIGNALS ) = Channel( SIGNALS ).new
+
+		@last_connection_exception : Exception?
+
 		getter server_info
 		getter status
 
@@ -20,35 +25,9 @@ module NATS
 			@parser = Protocol::Parser.new self
 		end
 
-		def connect(opts : Hash? = OptionsHash.new) : Void
+		def connect(opts : Hash = OptionsHash.new) : Void
 			set_options opts
-
-			initialize_servers
-
-			# Crystal does not have "retry" so try to get around it
-			# See https://github.com/crystal-lang/crystal/issues/1736
-			loop{
-				begin
-					server = next_server
-					initialize_connection server
-					setup_protocol
-
-					# Successfully connected. Reset to defaults
-					server[ :auth_required ] ||= true if @server_info[ "auth_required" ]
-					server[ :reconnect_attempts ] = 0_u8
-
-					break
-				rescue error : Exceptions::NoServersException
-					raise error
-				rescue error
-					close_connection
-					sleep options[ :reconnect_time_wait ].as( UInt8 ) if options[ :reconnect_time_wait ]
-				end
-			}
-
-			create_spawns
-
-			@status = STATUSES[ :connected ]
+			reconnect true
 		end
 
 		def publish(channel : String, message : String = EMPTY_MESSAGE, reply : String? = nil) : Void
@@ -89,9 +68,23 @@ module NATS
 			# TODO: Handle pong from servers (manual ping sent?)
 		end
 
-		def process_error(error : String) : Void
-			# TODO: Handle protocol errors
-			puts "\e[31mCatched protocol error: #{ error }!\e[0m"
+		def process_error(message : String) : Void
+			# TODO: Handle callback error with specific class and message
+			error = case message
+			when "Authorization Violation" then Protocol::Exceptions::AuthorizationViolationException.new
+			else Protocol::Exceptions::ErrCommandException.new message
+			end
+
+			# Fibers cannot be stopped, try to get around
+			# See https://github.com/crystal-lang/crystal/issues/3561
+			spawn{
+				@signal_channel.receive
+				if connected? && options[ :reconnect ]
+					@status = STATUSES[ :reconnecting ]
+					connection.disconnect
+					reconnect
+				end
+			}
 		end
 
 		def close_connection : Void
@@ -105,10 +98,37 @@ module NATS
 			@status = STATUSES[ :disconnected ]
 		end
 
+		def disconnected? : Bool
+			@status == STATUSES[ :disconnected ]
+		end
+
+		def connecting? : Bool
+			@status == STATUSES[ :connecting ] || @status == STATUSES[ :reconnecting ]
+		end
+
+		def reconnecting? : Bool
+			@status == STATUSES[ :reconnecting ]
+		end
+
+		def connected? : Bool
+			@status == STATUSES[ :connected ]
+		end
+
+		def disconnecting? : Bool
+			@status == STATUSES[ :disconnecting ]
+		end
+
 		private def set_options(opts : Hash) : Void
+			# To keep the user interaction simple,
+			# and avoid to initialize options through the NATS::OptionsHash in the main app,
+			# and keep the user options more or less dynamic,
+			# and keep internal options statically typed
+			# it needs helper hash with required static type.
+			# TODO: Make it clean.
 			inner_options = OptionsHash.new
 
 			inner_options[ :servers ] = opts[ :servers ]? || [ DEFAULT_URL ]
+			inner_options[ :reconnect ] = opts[ :reconnect ]?.nil? ? true : opts[ :reconnect ]
 
 			inner_options[ :verbose ] = opts[ :verbose ]? || false
 			inner_options[ :pedantic ] = opts[ :pedantic ]? || false
@@ -118,6 +138,45 @@ module NATS
 			inner_options[ :max_reconnect_attempts ] ||= MAX_RECONNECT_ATTEMPTS
 
 			@options = inner_options
+		end
+
+		private def reconnect(first_time : Bool = false) : Void
+			initialize_servers
+
+			# Crystal does not have "retry" so try to get around it
+			# See https://github.com/crystal-lang/crystal/issues/1736
+			loop{
+				begin
+					server = next_server
+					initialize_connection server
+					setup_protocol
+
+					# Successfully connected. Reset to defaults
+					server[ :auth_required ] ||= true if @server_info[ "auth_required" ]
+					server[ :reconnect_attempts ] = 0_u8
+
+					break
+				rescue error : Exceptions::NoServersException
+					raise @last_connection_exception || error
+				rescue error
+					@last_connection_exception = error
+
+					close_connection
+
+					if first_time && !options[ :reconnect ]
+						# TODO: Call disconnect callback here
+						raise error
+					end
+
+					sleep options[ :reconnect_time_wait ].as( UInt8 ) if options[ :reconnect_time_wait ]
+				end
+			}
+
+			create_spawns
+
+			@status = STATUSES[ :connected ]
+
+			@subscriptions.each{ |id, subscription| subscription.subscribe } unless first_time
 		end
 
 		private def initialize_servers : Void
@@ -149,7 +208,7 @@ module NATS
 
 		private def initialize_connection(server : ServerHash) : Void
 			if @connection
-				connection.reinitialize @uri.not_nil!
+				connection.uri = @uri.not_nil!
 			else
 				@connection = Connection.new @uri.not_nil!
 			end
@@ -161,20 +220,19 @@ module NATS
 		end
 
 		private def setup_protocol : Void
-			parser.parse connection.read_command.not_nil!
+			if command = connection.read_command
+				parser.parse command
+			end
+
 			raise Protocol::Exceptions::ConnectException.new "INFO not received" unless @server_info
 
-			connection.write connect_command
+			handle_connect_command
 
-			if options[ :verbose ]
-				command = connection.read_command raise_exception: true
-				raise Protocol::Exceptions::ConnectException.new "Unexpected command received: '#{ command }', expecting +OK" if command !~ Protocol::OK
-			end
 		rescue error : Protocol::Exceptions::ErrCommandException
 			raise @server_info[ "auth_required" ]? ? Protocol::Exceptions::AuthorizationViolationException.new : error
 		end
 
-		private def connect_command : String
+		private def handle_connect_command : Void
 			data = Hash{
 				:verbose  => options[ :verbose ],
 				:pedantic => options[ :pedantic ],
@@ -184,7 +242,16 @@ module NATS
 			}
 			data[ :name ] = options[ :name ] if options[ :name ]?
 
-			"CONNECT #{ data.to_json }#{ CR_LF }"
+			connection.write "CONNECT #{ data.to_json }#{ CR_LF }#{ PING_COMMAND }"
+			command = connection.read_command
+
+			raise Protocol::Exceptions::ErrCommandException.new command if command =~ Protocol::ERR
+			raise Exceptions::EmptyCommandException.new unless command
+
+			if options[ :verbose ]
+				command = connection.read_command
+				raise Protocol::Exceptions::ConnectException.new "Unexpected command received: #{ command.inspect }, expecting \"PONG\\r\\n\"" if command !~ Protocol::PONG
+			end
 		end
 
 		private def create_spawns : Void
@@ -192,19 +259,14 @@ module NATS
 		end
 
 		private def read_loop : Void
-			loop{
-				command = connection.read_command
-
-				# disconnected, try to connect again depending on settings
-				# TODO: Replace to "process_error" to increase performance
-				unless command
-					connect options
-					break
-				end
-
+			# Fibers cannot be stopped, try to get around
+			# See https://github.com/crystal-lang/crystal/issues/3561
+			while command = connection.read_command
 				parser.parse command
 				parser.parse connection.read_data( parser.needed ) if parser.need_data?
-			}
+			end
+
+			@signal_channel.send SIGNALS::CLOSE_READ
 		end
 
 		private def connection : Connection

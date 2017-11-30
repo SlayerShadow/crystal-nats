@@ -11,8 +11,8 @@ module NATS
 		INFO    = /\AINFO\s+([^\r\n]+)\r\n/i                                        # INFO {"json_key":"json_value"}
 		UNKNOWN = /\A(.*)/
 
-		CR_LF = "\r\n"
-
+		CR_LF         = "\r\n"
+		PING_COMMAND  = "PING#{ CR_LF }"
 		EMPTY_MESSAGE = ""
 
 	end

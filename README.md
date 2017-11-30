@@ -53,7 +53,8 @@ require "nats"
 options = {
   :servers => [ "nats://localhost:4222", "nats://localhost:4223" ],
   :randomize_servers => true, # Should servers be chosen randomly
-  :max_reconnect_attempts => 10u8, # How many times try to connect to server before exception
+  :reconnect => true, # Tries to reconnect to server after failed attempt
+  :max_reconnect_attempts => 10u8, # How many times try to reconnect before exception
   :reconnect_time_wait => 2u8, # Delay between reconnection tries
   :verbose => true # if need to confirm that sent is succeeded
 }
@@ -131,12 +132,16 @@ client.connect options
 
 ### Improvements
 
-- [ ] Remove regex from parser to speed up
 - [ ] Make the "options" flexible:
     - [x] Hash
     - [ ] JSON::Any
     - [ ] YAML::Any
         - [ ] Require yaml in macros and only when it needed (lazy)
+
+### Performance
+
+- [ ] Remove regex from parser
+- [ ] Manage `Bytes` only, even when receive protocol commands
 
 ## Contributing
 
@@ -148,4 +153,4 @@ client.connect options
 
 ## Contributors
 
-- [SlayerShadow](https://github.com/SlayerShadow) SlayerShadow - creator, maintainer
+- [SlayerShadow](https://github.com/SlayerShadow) Dmitry Lykov - creator, maintainer

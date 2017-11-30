@@ -1,6 +1,10 @@
 module NATS
 
 	class Client
+		enum SIGNALS
+			CLOSE_READ
+		end
+
 		alias OptionsHash = Hash(Symbol,
 			Array(String) | String | UInt8 | Bool | Nil
 		)

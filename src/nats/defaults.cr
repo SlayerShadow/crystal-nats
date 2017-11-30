@@ -6,15 +6,14 @@ module NATS
 	MAX_RECONNECT_ATTEMPTS = 10_u8
 	RECONNECT_TIME_WAIT    = 2_u8
 
-	CR_LF = Protocol::CR_LF
-
+	CR_LF         = Protocol::CR_LF
+	PING_COMMAND  = Protocol::PING_COMMAND
 	EMPTY_MESSAGE = Protocol::EMPTY_MESSAGE
 
 	STATUSES = {
 		disconnected:  0_u8,
 		connected:     1_u8,
-		disconnecting: 1_u8,
-		closed:        2_u8,
+		disconnecting: 2_u8,
 		reconnecting:  3_u8,
 		connecting:    4_u8
 	}

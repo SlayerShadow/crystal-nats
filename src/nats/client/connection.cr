@@ -11,13 +11,11 @@ module NATS
 
 			@socket : AvailableSocketTypes?
 			@buffer : Bytes = Bytes.new BUFFER_SIZE
+			@uri : URI
 
-			def initialize(@uri : URI)
-			end
+			setter uri
 
-			# TODO: Make it clean and DRY, and keep current object reusable
-			def reinitialize(@uri : URI) : Void
-				raise Exceptions::ConnectionInitializationException.new if @socket && !socket.closed?
+			def initialize(@uri)
 			end
 
 			def connect : Void
@@ -28,14 +26,8 @@ module NATS
 				socket.write data.to_slice
 			end
 
-			def read_command(raise_exception : Bool = false) : String?
-				if data = socket.gets chomp: false
-					raise Protocol::Exceptions::ErrCommandException.new data if raise_exception && data =~ Protocol::ERR
-				else
-					socket.close
-				end
-
-				data
+			def read_command : String?
+				socket.gets chomp: false
 			end
 
 			def read_data(bytesize : UInt32) : Bytes

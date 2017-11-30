@@ -9,6 +9,7 @@ module NATS
 			@@current_id = 0_u64
 
 			@socket : Connection
+			@channel : String
 			@callback : CallbackProc
 			@id : UInt64
 			@receives_count : UInt32 = 0_u32
@@ -17,7 +18,7 @@ module NATS
 
 			getter :id, :callback
 
-			def initialize(channel : String, @socket, id : (UInt64 | UInt32)?, options, &@callback : Subscription::CallbackProc)
+			def initialize(@channel, @socket, id : (UInt64 | UInt32)?, options, &@callback : Subscription::CallbackProc)
 				if current_id = id.try &.to_u64
 					@id = current_id
 					@@current_id = current_id
@@ -28,7 +29,11 @@ module NATS
 				@group = options[ :group ].as String if options[ :group ]?
 				@max_receives = options[ :max_receives ].as UInt32 if options[ :max_receives ]?
 
-				@socket.write "SUB #{ channel } #{ @id }#{ CR_LF }"
+				subscribe
+			end
+
+			def subscribe : Void
+				@socket.write "SUB #{ @channel } #{ @id }#{ CR_LF }"
 			end
 
 			def unsubscribe : Void
