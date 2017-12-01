@@ -18,7 +18,7 @@ module NATS
 
 			getter :id, :callback
 
-			def initialize(@channel, @socket, id : (UInt64 | UInt32)?, options, &@callback : Subscription::CallbackProc)
+			def initialize(@channel, @socket, id : (UInt64 | UInt32)?, options : OptionsHash, &@callback : Subscription::CallbackProc)
 				if current_id = id.try &.to_u64
 					@id = current_id
 					@@current_id = current_id

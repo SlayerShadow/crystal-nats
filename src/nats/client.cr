@@ -34,11 +34,11 @@ module NATS
 			return if message == EMPTY_MESSAGE
 			message_size = message.bytesize
 			reply_substring = reply ? "#{ reply } " : ""
-			connection.write "PUB #{ channel } #{ reply_substring }#{ message_size }#{ CR_LF }#{ message }#{ CR_LF }"
+			connection!.write "PUB #{ channel } #{ reply_substring }#{ message_size }#{ CR_LF }#{ message }#{ CR_LF }"
 		end
 
 		def subscribe(channel : String, id : UInt64? = nil, options : Subscription::OptionsHash = Subscription::OptionsHash.new, &callback : Subscription::CallbackProc) : UInt64
-			subscription = Subscription.new channel, connection, id, options, &callback
+			subscription = Subscription.new channel, connection!, id, options, &callback
 			@subscriptions[ subscription.id ] = subscription
 			subscription.id
 		end
@@ -61,7 +61,7 @@ module NATS
 		end
 
 		def process_ping : Void
-			connection.write "PONG#{ CR_LF }"
+			connection!.write "PONG#{ CR_LF }"
 		end
 
 		def process_pong : Void
@@ -79,9 +79,9 @@ module NATS
 			# See https://github.com/crystal-lang/crystal/issues/3561
 			spawn{
 				@signal_channel.receive
-				if connected? && options[ :reconnect ]
+				if connected? && options![ :reconnect ]
 					@status = STATUSES[ :reconnecting ]
-					connection.disconnect
+					connection!.disconnect
 					reconnect
 				end
 			}
@@ -89,10 +89,10 @@ module NATS
 
 		def close_connection : Void
 			case @status
-			when STATUSES[ :connecting ] then connection.disconnect
+			when STATUSES[ :connecting ] then connection!.disconnect
 			when STATUSES[ :connected ]
 				@status = STATUSES[ :disconnecting ]
-				connection.disconnect
+				connection!.disconnect
 			end
 
 			@status = STATUSES[ :disconnected ]
@@ -127,15 +127,15 @@ module NATS
 			# TODO: Make it clean.
 			inner_options = OptionsHash.new
 
-			inner_options[ :servers ] = opts[ :servers ]? || [ DEFAULT_URL ]
-			inner_options[ :reconnect ] = opts[ :reconnect ]?.nil? ? true : opts[ :reconnect ]
+			inner_options[ :servers ] = opts.fetch :servers, [ DEFAULT_URL ]
+			inner_options[ :reconnect ] = opts.fetch :reconnect, true
 
-			inner_options[ :verbose ] = opts[ :verbose ]? || false
-			inner_options[ :pedantic ] = opts[ :pedantic ]? || false
+			inner_options[ :verbose ] = opts.fetch :verbose, false
+			inner_options[ :pedantic ] = opts.fetch :pedantic, false
 
-			inner_options[ :randomize_servers ] = opts[ :randomize_servers ]?.nil? ? true : opts[ :randomize_servers ]
-			inner_options[ :reconnect_time_wait ] = opts[ :reconnect_time_wait ]? || RECONNECT_TIME_WAIT
-			inner_options[ :max_reconnect_attempts ] = opts[ :max_reconnect_attempts ]? || MAX_RECONNECT_ATTEMPTS
+			inner_options[ :randomize_servers ] = opts.fetch :randomize_servers, true
+			inner_options[ :reconnect_time_wait ] = opts.fetch :reconnect_time_wait, RECONNECT_TIME_WAIT
+			inner_options[ :max_reconnect_attempts ] = opts.fetch :max_reconnect_attempts, MAX_RECONNECT_ATTEMPTS
 
 			inner_options[ :user ] = opts[ :user ] if opts[ :user ]?
 			inner_options[ :pass ] = opts[ :pass ] if opts[ :pass ]?
@@ -144,6 +144,9 @@ module NATS
 		end
 
 		private def reconnect(first_time : Bool = false) : Void
+			# TODO: Put before the disconnection callback (see `Connection#disconnect`)
+			@server_info = nil
+
 			initialize_servers
 
 			# Crystal does not have "retry" so try to get around it
@@ -155,7 +158,7 @@ module NATS
 					setup_protocol
 
 					# Successfully connected. Reset to defaults
-					server[ :auth_required ] ||= true if @server_info[ "auth_required" ]
+					server[ :auth_required ] ||= true if server_info![ "auth_required" ]
 					server[ :reconnect_attempts ] = 0_u8
 
 					break
@@ -166,12 +169,12 @@ module NATS
 
 					close_connection
 
-					if first_time && !options[ :reconnect ]
-						# TODO: Call disconnect callback here
+					if first_time && !options![ :reconnect ]
+						# TODO: Call `close` callback here
 						raise error
 					end
 
-					sleep options[ :reconnect_time_wait ].as( UInt8 ) if options[ :reconnect_time_wait ]
+					sleep options![ :reconnect_time_wait ].as( UInt8 ) if options![ :reconnect_time_wait ]
 				end
 			}
 
@@ -183,8 +186,8 @@ module NATS
 		end
 
 		private def initialize_servers : Void
-			servers = options[ :servers ].as Array( String )
-			servers.shuffle! if options[ :randomize_servers ]
+			servers = options![ :servers ].as Array( String )
+			servers.shuffle! if options![ :randomize_servers ]
 			servers.each{ |server_url| @servers << ServerHash{ :uri => URI.parse( server_url ) } }
 		end
 
@@ -194,7 +197,7 @@ module NATS
 			reconnects = ( server[ :reconnect_attempts ]? || 0_u8 ).as( UInt8 ) + 1
 			server[ :reconnect_attempts ] = reconnects
 
-			@servers << server if reconnects < options[ :max_reconnect_attempts ].as( UInt8 )
+			@servers << server if reconnects < options![ :max_reconnect_attempts ].as( UInt8 )
 
 			set_uri_credentials server[ :uri ].as( URI )
 
@@ -204,27 +207,25 @@ module NATS
 		end
 
 		private def set_uri_credentials(uri : URI) : Void
-			uri.user     = options[ :user ].as String if options[ :user ]?
-			uri.password = options[ :pass ].as String if options[ :pass ]?
+			uri.user     = options![ :user ].as String if options![ :user ]?
+			uri.password = options![ :pass ].as String if options![ :pass ]?
 			@uri = uri
 		end
 
 		private def initialize_connection(server : ServerHash) : Void
 			if @connection
-				connection.uri = @uri.not_nil!
+				connection!.initialize @uri.not_nil!
 			else
 				@connection = Connection.new @uri.not_nil!
 			end
-
-			connection.connect
 
 			server[ :was_connected ] = true
 			@status = STATUSES[ :connecting ]
 		end
 
 		private def setup_protocol : Void
-			if command = connection.read_command
-				parser.parse command
+			if command = connection!.read_command
+				parser!.parse command
 			end
 
 			raise Protocol::Exceptions::ConnectException.new "INFO not received" unless @server_info
@@ -232,32 +233,32 @@ module NATS
 			handle_connect_command
 
 		rescue error : Protocol::Exceptions::ErrCommandException
-			raise @server_info[ "auth_required" ]? ? Protocol::Exceptions::AuthorizationViolationException.new : error
+			raise server_info![ "auth_required" ]? ? Protocol::Exceptions::AuthorizationViolationException.new : error
 		end
 
 		private def handle_connect_command : Void
 			data = Hash{
-				:verbose  => options[ :verbose ],
-				:pedantic => options[ :pedantic ],
+				:verbose  => options![ :verbose ],
+				:pedantic => options![ :pedantic ],
 				:lang     => LANG,
 				:version  => VERSION,
 				:protocol => PROTOCOL
 			}
-			data[ :name ] = options[ :name ] if options[ :name ]?
+			data[ :name ] = options![ :name ] if options![ :name ]?
 
-			if @server_info[ "auth_required" ]
-				data[ :user ] = options[ :user ]?
-				data[ :pass ] = options[ :pass ]?
+			if server_info![ "auth_required" ]
+				data[ :user ] = options![ :user ] if options![ :user ]?
+				data[ :pass ] = options![ :pass ] if options![ :pass ]?
 			end
 
-			connection.write "CONNECT #{ data.to_json }#{ CR_LF }#{ PING_COMMAND }"
-			command = connection.read_command
+			connection!.write "CONNECT #{ data.to_json }#{ CR_LF }#{ PING_COMMAND }"
+			command = connection!.read_command
 
 			raise Protocol::Exceptions::ErrCommandException.new command if command =~ Protocol::ERR
 			raise Exceptions::EmptyCommandException.new unless command
 
-			if options[ :verbose ]
-				command = connection.read_command
+			if options![ :verbose ]
+				command = connection!.read_command
 				raise Protocol::Exceptions::ConnectException.new "Unexpected command received: #{ command.inspect }, expecting \"PONG\\r\\n\"" if command !~ Protocol::PONG
 			end
 		end
@@ -269,24 +270,36 @@ module NATS
 		private def read_loop : Void
 			# Fibers cannot be stopped, try to get around
 			# See https://github.com/crystal-lang/crystal/issues/3561
-			while command = connection.read_command
-				parser.parse command
-				parser.parse connection.read_data( parser.needed ) if parser.need_data?
+			while command = connection!.read_command
+				parser!.parse command
+				parser!.parse connection!.read_data( parser!.needed ) if parser!.need_data?
 			end
 
 			@signal_channel.send SIGNALS::CLOSE_READ
 		end
 
-		private def connection : Connection
+		# `initialize_connection` creates `@connection` once in the first connection process
+		# After that and anywhere the same object is reused (even if reconnects)
+		private def connection! : Connection
 			@connection.not_nil!
 		end
 
-		private def parser : Protocol::Parser
+		# `initialize` creates `@parser`, but
+		# because of parser initialization has link to the `client` itself,
+		# it should be nilable
+		private def parser! : Protocol::Parser
 			@parser.not_nil!
 		end
 
-		private def options : OptionsHash
+		# `set_options` creates `@options` after initialization
+		private def options! : OptionsHash
 			@options.not_nil!
+		end
+
+		# `process_info` creates `@server_info` in connection process
+		# Raises exception in `setup_protocol`
+		private def server_info! : ServerInfoHash
+			@server_info.not_nil!
 		end
 	end
 

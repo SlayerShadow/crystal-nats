@@ -9,25 +9,20 @@ module NATS
 
 			BUFFER_SIZE = 65535_u16
 
-			@socket : AvailableSocketTypes?
+			@socket : AvailableSocketTypes
 			@buffer : Bytes = Bytes.new BUFFER_SIZE
 			@uri : URI
 
-			setter uri
-
 			def initialize(@uri)
-			end
-
-			def connect : Void
 				@socket = TCPSocket.new @uri.host.not_nil!, @uri.port.not_nil!
 			end
 
 			def write(data : String) : Void
-				socket.write data.to_slice
+				@socket.write data.to_slice
 			end
 
 			def read_command : String?
-				socket.gets chomp: false
+				@socket.gets chomp: false
 			end
 
 			def read_data(bytesize : UInt32) : Bytes
@@ -35,22 +30,18 @@ module NATS
 
 				while bytesize > 0
 					slice = bytesize > BUFFER_SIZE ? @buffer : Bytes.new( bytesize )
-					read_amount = socket.read slice
+					read_amount = @socket.read slice
 					buffer.write slice
 					bytesize -= read_amount
 				end
 
-				socket.gets # Trailing CR_LF
+				@socket.gets # Trailing CR_LF
 
 				buffer.to_slice
 			end
 
 			def disconnect : Void
-				socket.close
-			end
-
-			private def socket : AvailableSocketTypes
-				@socket.not_nil!
+				@socket.close
 			end
 		end
 	end
