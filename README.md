@@ -82,7 +82,7 @@ client = NATS::Client.new
 client.connect options
 ```
 
-## TLS (not yet implemented)
+## TLS
 
 ```crystal
 require "nats"
@@ -90,16 +90,31 @@ require "nats"
 options = {
   :servers => [ "tls://localhost:4444" ],
   :tls => {
-    :private_key_file => "config/cert/key.pem",
     :cert_file => "config/cert.pem",
+    :cert_key_file => "config/cert/key.pem",
     :ca_cert_file => "config/ca.pem", # When need to verify peer
-    :verify_peer => true # Along with ca_cert_file - when need to verify peer
+    :verify_peer => false             # Along with ca_cert_file - when need to verify peer (default - false)
   }
 }
 
 client = NATS::Client.new
 client.connect options
 ```
+
+Note that:
+
+- If NATS launched with `-tlsverify`
+    - It should be also launched with at least `-tlscert`, `-tlskey` and `-tlscacert`.
+    - App should be started with at least `:cert_key_file` and `:ca_cert_file`.
+- If NATS launched without `tlsverify`
+    - It can be also launched without `-tlscacert`.
+    - App can be started even without `:tls` key (protocol will be switched to TLS transparently).
+- If app launches with `:verify_peer => true`
+    - NATS can be launched without `-tlscacert` but the `-tlscert` and `-tlskey` should be passed.
+    - App should be started with `:ca_cert_file` to verify NATS.
+    - App can be started without `:cert_file` and `:cert_key_file` (only CA is mandatory).
+- If NATS launched with `-tlsverify` and app launches with `:verify_peer => true`
+    - NATS and app should be fully configured for TLS connection.
 
 ## Development
 
@@ -122,21 +137,21 @@ client.connect options
     - [ ] Tests
 - [x] User authentication
     - [ ] Tests
-- [ ] OpenSSL:
-    - [ ] Connect with using certificates
-    - [ ] Manage server information to determine when to connect through SSL
-    - [ ] Require OpenSSL in macros and only when it needed (lazy)
+- [x] OpenSSL
+    - [x] Connect with using certificates
+    - [x] Manage server information to determine when to connect through SSL
     - [ ] Tests
 - [ ] Subscriptions timeouts
     - [ ] Tests
 
 ### Improvements
 
-- [ ] Make the "options" flexible:
+- [ ] Make the "options" flexible
     - [x] Hash
     - [ ] JSON::Any
     - [ ] YAML::Any
         - [ ] Require yaml in macros and only when it needed (lazy)
+- [ ] Add configuration for channel buffer (see [Crystal thread](https://github.com/crystal-lang/crystal/issues/5375))
 
 ### Performance
 

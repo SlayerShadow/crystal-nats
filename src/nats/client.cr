@@ -7,7 +7,7 @@ module NATS
 	class Client
 		@connection : Connection?
 		@parser : Protocol::Parser?
-		@options : OptionsHash?
+		@options : OptionsHash = OptionsHash.new
 		@servers : ServerPoolArray = ServerPoolArray.new
 		@server_info : ServerInfoHash?
 		@status : UInt8 = STATUSES[ :disconnected ]
@@ -25,7 +25,7 @@ module NATS
 			@parser = Protocol::Parser.new self
 		end
 
-		def connect(opts : Hash = OptionsHash.new) : Void
+		def connect(opts : Hash) : Void
 			set_options opts
 			reconnect true
 		end
@@ -127,18 +127,31 @@ module NATS
 			# TODO: Make it clean.
 			inner_options = OptionsHash.new
 
-			inner_options[ :servers ] = opts.fetch :servers, [ DEFAULT_URL ]
-			inner_options[ :reconnect ] = opts.fetch :reconnect, true
+			inner_options[ :servers ] = opts.fetch( :servers, [ DEFAULT_URL ] ).as Array(String)
+			inner_options[ :reconnect ] = opts.fetch( :reconnect, true ).as Bool
 
-			inner_options[ :verbose ] = opts.fetch :verbose, false
-			inner_options[ :pedantic ] = opts.fetch :pedantic, false
+			inner_options[ :verbose ] = opts.fetch( :verbose, false ).as Bool
+			inner_options[ :pedantic ] = opts.fetch( :pedantic, false ).as Bool
 
-			inner_options[ :randomize_servers ] = opts.fetch :randomize_servers, true
-			inner_options[ :reconnect_time_wait ] = opts.fetch :reconnect_time_wait, RECONNECT_TIME_WAIT
-			inner_options[ :max_reconnect_attempts ] = opts.fetch :max_reconnect_attempts, MAX_RECONNECT_ATTEMPTS
+			inner_options[ :randomize_servers ] = opts.fetch( :randomize_servers, true ).as Bool
+			inner_options[ :reconnect_time_wait ] = opts.fetch( :reconnect_time_wait, RECONNECT_TIME_WAIT ).as UInt8
+			inner_options[ :max_reconnect_attempts ] = opts.fetch( :max_reconnect_attempts, MAX_RECONNECT_ATTEMPTS ).as UInt8
 
-			inner_options[ :user ] = opts[ :user ] if opts[ :user ]?
-			inner_options[ :pass ] = opts[ :pass ] if opts[ :pass ]?
+			inner_options[ :user ] = opts[ :user ].as String if opts[ :user ]?
+			inner_options[ :pass ] = opts[ :pass ].as String if opts[ :pass ]?
+
+			if opts[ :tls ]?
+				tls = opts[ :tls ].as Hash
+
+				inner_tls = OptionsTLSHash.new
+
+				inner_tls[ :cert_file     ] = tls[ :cert_file     ] if tls[ :cert_file     ]?
+				inner_tls[ :cert_key_file ] = tls[ :cert_key_file ] if tls[ :cert_key_file ]?
+				inner_tls[ :ca_cert_file  ] = tls[ :ca_cert_file  ] if tls[ :ca_cert_file  ]?
+				inner_tls[ :verify_peer   ] = tls[ :verify_peer   ] if tls[ :verify_peer   ]?
+
+				inner_options[ :tls ] = inner_tls
+			end
 
 			@options = inner_options
 		end
@@ -231,13 +244,12 @@ module NATS
 			raise Protocol::Exceptions::ConnectException.new "INFO not received" unless @server_info
 
 			handle_connect_command
-
 		rescue error : Protocol::Exceptions::ErrCommandException
 			raise server_info![ "auth_required" ]? ? Protocol::Exceptions::AuthorizationViolationException.new : error
 		end
 
 		private def handle_connect_command : Void
-			data = Hash{
+			data = {
 				:verbose  => options![ :verbose ],
 				:pedantic => options![ :pedantic ],
 				:lang     => LANG,
@@ -246,6 +258,7 @@ module NATS
 			}
 			data[ :name ] = options![ :name ] if options![ :name ]?
 
+			activate_tls if server_info![ "tls_required" ]
 			if server_info![ "auth_required" ]
 				data[ :user ] = options![ :user ] if options![ :user ]?
 				data[ :pass ] = options![ :pass ] if options![ :pass ]?
@@ -260,6 +273,16 @@ module NATS
 			if options![ :verbose ]
 				command = connection!.read_command
 				raise Protocol::Exceptions::ConnectException.new "Unexpected command received: #{ command.inspect }, expecting \"PONG\\r\\n\"" if command !~ Protocol::PONG
+			end
+		end
+
+		private def activate_tls : Void
+			if tls = options![ :tls ]?
+				connection!.activate_tls tls.as( OptionsTLSHash )
+			elsif server_info![ "tls_verify" ]
+				raise Protocol::Exceptions::SecureConnectionException.new
+			else
+				connection!.activate_tls
 			end
 		end
 
