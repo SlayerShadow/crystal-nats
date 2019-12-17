@@ -171,7 +171,7 @@ module NATS
 					setup_protocol
 
 					# Successfully connected. Reset to defaults
-					server[ :auth_required ] ||= true if server_info![ "auth_required" ]
+					server[ :auth_required ] ||= true if server_info![ "auth_required" ]?
 					server[ :reconnect_attempts ] = 0_u8
 
 					break
@@ -258,8 +258,8 @@ module NATS
 			}
 			data[ :name ] = options![ :name ] if options![ :name ]?
 
-			activate_tls if server_info![ "tls_required" ]
-			if server_info![ "auth_required" ]
+			activate_tls if server_info![ "tls_required" ]?
+			if server_info![ "auth_required" ]?
 				data[ :user ] = options![ :user ] if options![ :user ]?
 				data[ :pass ] = options![ :pass ] if options![ :pass ]?
 			end
@@ -279,7 +279,7 @@ module NATS
 		private def activate_tls : Void
 			if tls = options![ :tls ]?
 				connection!.activate_tls tls.as( OptionsTLSHash )
-			elsif server_info![ "tls_verify" ]
+			elsif server_info![ "tls_verify" ]?
 				raise Protocol::Exceptions::SecureConnectionException.new
 			else
 				connection!.activate_tls

@@ -50,7 +50,7 @@ client.publish("foo", "bar", "foo.repl")
 ```crystal
 require "nats"
 
-options = {
+options = NATS::Client::OptionsHash{
   :servers => [ "nats://localhost:4222", "nats://localhost:4223" ],
   :randomize_servers => true, # Should servers be chosen randomly
   :reconnect => true, # Tries to reconnect to server after failed attempt
@@ -72,7 +72,7 @@ client.subscribe("foo"){|message, reply, subject|
 ```crystal
 require "nats"
 
-options = {
+options = NATS::Client::OptionsHash{
   :servers => [ "nats://localhost:4222" ],
   :user => "name",
   :pass => "helloworld"
@@ -87,7 +87,7 @@ client.connect options
 ```crystal
 require "nats"
 
-options = {
+options = NATS::Client::OptionsHash{
   :servers => [ "tls://localhost:4444" ],
   :tls => {
     :cert_file => "config/cert.pem",
