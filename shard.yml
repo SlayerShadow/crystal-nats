@@ -1,9 +1,8 @@
 name: nats
-version: 0.1.2
+version: 0.1.3
+crystal: 1.0.0-dev
 
 authors:
-  - SlayerShadow <gawfast@yandex.ru>
-
-crystal: 0.32.0
+  - SlayerShadow <gawfast@gmail.com>
 
 license: MIT

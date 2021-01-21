@@ -299,6 +299,9 @@ module NATS
 			end
 
 			@signal_channel.send SIGNALS::CLOSE_READ
+		rescue error
+			spawn read_loop
+			raise error
 		end
 
 		# `initialize_connection` creates `@connection` once in the first connection process
