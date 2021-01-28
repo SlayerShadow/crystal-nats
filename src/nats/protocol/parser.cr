@@ -26,7 +26,7 @@ module NATS
 				when MSG
 					@group    = $1
 					@subscription_id = $2.to_u64
-					@reply           = $3 if $3?
+					@reply           = $3? ? $3 : ""
 					@needed          = $4.to_u32
 				when OK
 				when ERR then @client.process_error $1
