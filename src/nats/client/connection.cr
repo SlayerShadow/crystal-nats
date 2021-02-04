@@ -8,7 +8,6 @@ module NATS
 			BUFFER_SIZE = 65535_u16
 
 			@socket : IO
-			@buffer : Bytes = Bytes.new BUFFER_SIZE
 			@uri : URI
 
 			def initialize(@uri)
@@ -45,9 +44,9 @@ module NATS
 				buffer = IO::Memory.new bytesize
 
 				while bytesize > 0
-					slice = bytesize > BUFFER_SIZE ? @buffer : Bytes.new( bytesize )
+					slice = Bytes.new bytesize
 					read_amount = @socket.read slice
-					buffer.write slice
+					buffer.write slice[ 0, read_amount ]
 					bytesize -= read_amount
 				end
 
