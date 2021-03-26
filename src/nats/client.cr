@@ -31,7 +31,7 @@ module NATS
 		end
 
 		def publish(channel : String, message : String = EMPTY_MESSAGE, reply : String? = nil) : Void
-			return if message == EMPTY_MESSAGE
+			return if channel == EMPTY_MESSAGE || message == EMPTY_MESSAGE
 			message_size = message.bytesize
 			reply_substring = reply ? "#{ reply } " : ""
 			connection!.write "PUB #{ channel } #{ reply_substring }#{ message_size }#{ CR_LF }#{ message }#{ CR_LF }"
@@ -137,18 +137,18 @@ module NATS
 			inner_options[ :reconnect_time_wait ] = opts.fetch( :reconnect_time_wait, RECONNECT_TIME_WAIT ).as UInt8
 			inner_options[ :max_reconnect_attempts ] = opts.fetch( :max_reconnect_attempts, MAX_RECONNECT_ATTEMPTS ).as UInt8
 
-			inner_options[ :user ] = opts[ :user ].as String if opts[ :user ]?
-			inner_options[ :pass ] = opts[ :pass ].as String if opts[ :pass ]?
+			inner_options[ :user ] = opts[ :user ].to_s if opts[ :user ]?
+			inner_options[ :pass ] = opts[ :pass ].to_s if opts[ :pass ]?
 
 			if opts[ :tls ]?
 				tls = opts[ :tls ].as Hash
 
 				inner_tls = OptionsTLSHash.new
 
-				inner_tls[ :cert_file     ] = tls[ :cert_file     ] if tls[ :cert_file     ]?
-				inner_tls[ :cert_key_file ] = tls[ :cert_key_file ] if tls[ :cert_key_file ]?
-				inner_tls[ :ca_cert_file  ] = tls[ :ca_cert_file  ] if tls[ :ca_cert_file  ]?
-				inner_tls[ :verify_peer   ] = tls[ :verify_peer   ] if tls[ :verify_peer   ]?
+				inner_tls[ :cert_file     ] = tls[ :cert_file     ].to_s    if tls[ :cert_file     ]?
+				inner_tls[ :cert_key_file ] = tls[ :cert_key_file ].to_s    if tls[ :cert_key_file ]?
+				inner_tls[ :ca_cert_file  ] = tls[ :ca_cert_file  ].to_s    if tls[ :ca_cert_file  ]?
+				inner_tls[ :verify_peer   ] = tls[ :verify_peer   ].as Bool if tls[ :verify_peer   ]?
 
 				inner_options[ :tls ] = inner_tls
 			end
