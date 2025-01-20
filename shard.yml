@@ -1,6 +1,6 @@
 name: nats
 version: 0.1.5
-crystal: 1.0.0
+crystal: 1.5.0
 
 authors:
   - SlayerShadow <gawfast@gmail.com>
